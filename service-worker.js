@@ -37,9 +37,9 @@ self.addEventListener('install', event => {
       }),
       
       // Hydrantendaten cachen
-      caches.open(DYNAMIC_CACHE).then(cache => {
-        return cache.add('/hydrants-data.json');
-      })
+      // Optionale Daten-Datei (wird separat erzeugt, Fehler ignorieren)
+  // Simplifiziert ohne Fehlerbehandlung um Python Parser Probleme zu vermeiden (wird im Browser interpretiert)
+  caches.open(DYNAMIC_CACHE).then(cache => cache.add('./hydrants-data.json'))
     ]).then(() => {
       console.log('✅ Service Worker: Installation abgeschlossen');
       self.skipWaiting();
@@ -180,7 +180,7 @@ async function syncHydrantData() {
     if (response.ok) {
       const data = await response.json();
       const cache = await caches.open(DYNAMIC_CACHE);
-      await cache.put('/hydrants-data.json', new Response(JSON.stringify(data)));
+  await cache.put('./hydrants-data.json', new Response(JSON.stringify(data)));
       
       // Clients über Update informieren
       const clients = await self.clients.matchAll();
