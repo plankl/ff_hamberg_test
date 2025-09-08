@@ -5,15 +5,19 @@ const DYNAMIC_CACHE = 'dynamic-v1';
 
 // Statische Assets die immer gecacht werden
 const STATIC_ASSETS = [
-  '/',
-  '/index.html',
-  '/icons/feuerwehr-helm.png',
-  '/icons/red-dot.png',
-  '/icons/blue-dot.png',
-  '/icons/green-dot.png',
-  '/icons/yellow-dot.png',
-  '/icons/purple-dot.png',
-  '/icons/blinker.png',
+  './',
+  './index.html',
+  './manifest.json',
+  './icon.png',
+  './icon-192.png',
+  './icon-512.png',
+  './icons/feuerwehr-helm.png',
+  './icons/red-dot.png',
+  './icons/blue-dot.png',
+  './icons/green-dot.png',
+  './icons/yellow-dot.png',
+  './icons/purple-dot.png',
+  './icons/blinker.png',
   'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css',
   'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'
 ];
