@@ -2,7 +2,7 @@
 
 ## 📁 Inhalt
 
-- `index_simple_ar.html` - Hauptanwendung
+- `index.html` - Hauptanwendung
 - `manifest.json` - PWA-Manifest  
 - `service-worker.js` - Service Worker für Offline-Funktionalität
 - `icon.png/svg` - App-Icon
@@ -13,7 +13,7 @@
 
 ### Lokale Nutzung
 1. Alle Dateien in einen Webserver-Ordner kopieren
-2. `index_simple_ar.html` in Browser öffnen
+2. `index.html` in Browser öffnen
 
 ### GitHub Pages
 1. Alle Dateien in Repository hochladen
