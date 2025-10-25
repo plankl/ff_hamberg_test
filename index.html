@@ -1,0 +1,1712 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <title>🚒 Hydrantenkarte Feuerwehr Hamberg</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
+  <meta name="description" content="Progressive Web App zur Darstellung von Feuerwehr-Hydranten und Rettungspunkten">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Hydrantenkarte">
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#d40000">
+  <link rel="icon" href="icons/feuerwehr-helm.png" type="image/png">
+  <link rel="apple-touch-icon" href="icons/feuerwehr-helm.png">
+  
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" 
+        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" 
+        crossorigin="anonymous" />
+  
+  <style>
+    /* ========== GLOBAL STYLES ========== */
+    * { 
+      box-sizing: border-box; 
+      touch-action: manipulation;
+    }
+    
+    html, body { 
+      margin: 0; 
+      padding: 0; 
+      height: 100vh; 
+      width: 100vw;
+      overflow: hidden;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+      background: #1a1a1a;
+      color: #ffffff;
+    }
+    
+    /* ========== MODE CONTAINERS ========== */
+    .mode-container {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      transition: opacity 0.5s ease;
+      z-index: 1;
+    }
+    
+    .mode-container:not(.active) {
+      opacity: 0;
+      pointer-events: none;
+      z-index: 0;
+    }
+    
+    .mode-container.active {
+      opacity: 1;
+      pointer-events: all;
+      z-index: 1;
+    }
+    
+    /* ========== MAP CONTAINER ========== */
+    #map-container {
+      background: #1a1a1a;
+    }
+    
+    #map { 
+      width: 100%;
+      height: 100%;
+    }
+    
+    /* ========== AR CONTAINER ========== */
+    #ar-container {
+      background: #000;
+      position: relative;
+    }
+    
+    #ar-video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      background: #000;
+    }
+    
+    #ar-overlays {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 2;
+    }
+    
+    .ar-overlay {
+      position: absolute;
+      background: rgba(0, 0, 0, 0.8);
+      color: white;
+      padding: 8px 12px;
+      border-radius: 15px;
+      font-size: 12px;
+      font-weight: 600;
+      border: 2px solid;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+      transform: translate(-50%, -50%);
+      min-width: 100px;
+      text-align: center;
+      pointer-events: auto;
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+    
+    .ar-overlay:hover {
+      transform: translate(-50%, -50%) scale(1.1);
+    }
+    
+    .ar-overlay.überflurhydrant {
+      border-color: #ff4444;
+      background: rgba(255, 68, 68, 0.9);
+    }
+    
+    .ar-overlay.unterflurhydrant {
+      border-color: #4444ff;
+      background: rgba(68, 68, 255, 0.9);
+    }
+    
+    .ar-overlay.rettungspunkt {
+      border-color: #44ff44;
+      background: rgba(68, 255, 68, 0.9);
+    }
+    
+    .ar-overlay.wasserbehälter {
+      border-color: #ffff44;
+      background: rgba(255, 255, 68, 0.9);
+      color: #000;
+    }
+    
+    .ar-overlay.sperrpunkt {
+      border-color: #ff44ff;
+      background: rgba(255, 68, 255, 0.9);
+    }
+    
+    .ar-info-panel {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(0, 0, 0, 0.8);
+      color: white;
+      padding: 20px;
+      border-radius: 15px;
+      text-align: center;
+      z-index: 3;
+      font-size: 16px;
+      max-width: 80%;
+    }
+    
+    /* ========== HEADER ========== */
+    .map-title { 
+      position: fixed; 
+      top: 10px; 
+      left: 50%; 
+      transform: translateX(-50%); 
+      background: rgba(0, 0, 0, 0.8); 
+      backdrop-filter: blur(10px);
+      color: white;
+      padding: 8px 16px; 
+      font-size: 16px; 
+      font-weight: 600; 
+      border-radius: 12px; 
+      z-index: 1001;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      flex-direction: column;
+    }
+    
+    .mode-switcher {
+      display: flex;
+      gap: 8px;
+      margin-top: 8px;
+    }
+    
+    .mode-btn {
+      background: rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      color: white;
+      padding: 6px 12px;
+      border-radius: 20px;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 600;
+      transition: all 0.3s ease;
+      min-width: 80px;
+    }
+    
+    .mode-btn:hover {
+      background: rgba(255, 255, 255, 0.2);
+      transform: scale(1.05);
+    }
+    
+    .mode-btn.active {
+      background: linear-gradient(135deg, #00ff88 0%, #00aaff 100%);
+      color: #000;
+      border-color: #00ff88;
+    }
+    
+    /* ========== CONTROLS SIDEBAR ========== */
+    .controls-sidebar { 
+      position: fixed; 
+      right: 10px; 
+      top: 50%; 
+      transform: translateY(-50%);
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      z-index: 1000;
+    }
+    
+    .control-btn { 
+      background: rgba(0, 0, 0, 0.8); 
+      backdrop-filter: blur(10px);
+      color: white;
+      border: none;
+      border-radius: 8px; 
+      padding: 8px;
+      cursor: pointer; 
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.3s ease;
+      user-select: none;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+      min-width: 60px;
+    }
+    
+    .control-btn .icon {
+      font-size: 20px;
+      margin-bottom: 2px;
+    }
+    
+    .control-btn .label {
+      font-size: 10px;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    
+    .control-btn:hover { 
+      background: rgba(255, 255, 255, 0.2);
+      transform: scale(1.05);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+    }
+    
+    .control-btn:active {
+      transform: scale(0.95);
+    }
+    
+    .control-btn.active { 
+      background: #4CAF50; 
+      color: white; 
+    }
+    
+    .control-btn.blinking { 
+      background: #ff9800; 
+      color: white;
+      animation: flashlightBlink 1s infinite;
+    }
+    
+    @keyframes flashlightBlink {
+      0%, 50% { background: #ff9800; }
+      51%, 100% { background: rgba(0, 0, 0, 0.8); }
+    }
+    
+    /* ========== LEGEND ========== */
+    .legend-container {
+      position: fixed;
+      bottom: 20px;
+      left: 20px;
+      background: rgba(0, 0, 0, 0.85);
+      backdrop-filter: blur(10px);
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+      z-index: 1000;
+      min-width: 200px;
+      max-width: 280px;
+    }
+    
+    .legend-header {
+      padding: 10px 12px;
+      font-weight: 600;
+      cursor: pointer;
+      border-bottom: 1px solid rgba(255,255,255,0.1);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      user-select: none;
+    }
+    
+    .legend-header:hover {
+      background: rgba(255,255,255,0.05);
+    }
+    
+    .toggle-icon {
+      transition: transform 0.3s ease;
+      font-size: 12px;
+    }
+    
+    .legend-content {
+      padding: 10px;
+      max-height: 300px;
+      overflow-y: auto;
+      transition: all 0.3s ease;
+    }
+    
+    .legend-content.collapsed {
+      max-height: 0;
+      padding: 0 10px;
+      overflow: hidden;
+    }
+    
+    .legend-filters {
+      padding-bottom: 8px;
+      margin-bottom: 8px;
+      border-bottom: 1px solid rgba(255,255,255,0.1);
+    }
+    
+    .legend-items {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 4px 0;
+    }
+    
+    .legend-color {
+      width: 16px;
+      height: 16px;
+      border-radius: 4px;
+    }
+    
+    .filter-checkbox {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+      font-size: 13px;
+      user-select: none;
+      flex: 1;
+    }
+    
+    .filter-checkbox input[type="checkbox"] {
+      cursor: pointer;
+    }
+    
+    .filter-checkbox:hover {
+      color: #4CAF50;
+    }
+    
+    /* ========== STATUS INDICATORS ========== */
+    .status-container { 
+      position: fixed; 
+      bottom: 20px; 
+      right: 10px; 
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      z-index: 1000;
+      align-items: flex-end;
+    }
+    
+    .status-indicator { 
+      background: rgba(0, 0, 0, 0.8); 
+      backdrop-filter: blur(10px);
+      color: white;
+      padding: 6px 12px; 
+      border-radius: 15px; 
+      font-size: 12px; 
+      font-weight: 600;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+      white-space: nowrap;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    
+    /* ========== OFFLINE INDICATOR ========== */
+    .offline-indicator {
+      position: fixed;
+      top: 100px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #ff9800;
+      color: white;
+      padding: 8px 16px;
+      border-radius: 20px;
+      font-size: 14px;
+      font-weight: bold;
+      z-index: 8000;
+      display: none;
+    }
+    
+    .offline-indicator.visible {
+      display: block;
+      animation: pulse 2s infinite;
+    }
+    
+    @keyframes pulse {
+      0%, 100% { transform: translateX(-50%) scale(1); }
+      50% { transform: translateX(-50%) scale(1.05); }
+    }
+    
+    /* ========== AR LOADING ========== */
+    .ar-loading, .camera-permission {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      background: rgba(0, 0, 0, 0.9);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      z-index: 2000;
+      text-align: center;
+      padding: 20px;
+    }
+    
+    .loading-spinner {
+      border: 4px solid rgba(255, 255, 255, 0.1);
+      border-left: 4px solid #00ff88;
+      border-radius: 50%;
+      width: 60px;
+      height: 60px;
+      animation: spin 1s linear infinite;
+      margin-bottom: 30px;
+    }
+    
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    
+    .loading-text {
+      font-size: 20px;
+      font-weight: 600;
+      margin-bottom: 15px;
+    }
+    
+    .loading-steps {
+      font-size: 14px;
+      opacity: 0.8;
+      max-width: 300px;
+      line-height: 1.6;
+    }
+    
+    .permission-icon {
+      font-size: 80px;
+      margin-bottom: 20px;
+    }
+    
+    .permission-btn {
+      background: linear-gradient(135deg, #00ff88 0%, #00aaff 100%);
+      color: #000;
+      border: none;
+      padding: 15px 30px;
+      border-radius: 50px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      margin-top: 20px;
+      transition: all 0.3s ease;
+    }
+    
+    .permission-btn:hover {
+      transform: scale(1.05);
+      box-shadow: 0 6px 25px rgba(0, 255, 136, 0.5);
+    }
+    
+    /* ========== LEAFLET POPUPS ========== */
+    .leaflet-popup-content-wrapper {
+      background: rgba(255,255,255,0.95) !important;
+      backdrop-filter: blur(10px);
+      border-radius: 8px !important;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.2) !important;
+    }
+    
+    .leaflet-popup-content {
+      margin: 12px 16px !important;
+      font-size: 13px;
+      line-height: 1.4;
+    }
+    
+    .leaflet-popup-tip {
+      background: rgba(255,255,255,0.95) !important;
+    }
+    
+    /* ========== MOBILE RESPONSIVE ========== */
+    @media (max-width: 768px) {
+      .map-title { 
+        font-size: 14px; 
+        padding: 6px 12px;
+        flex-direction: column;
+        gap: 8px;
+      }
+      
+      .mode-switcher {
+        gap: 6px;
+        margin-top: 6px;
+      }
+      
+      .mode-btn {
+        padding: 4px 10px;
+        font-size: 11px;
+        min-width: 70px;
+      }
+      
+      .controls-sidebar { 
+        right: 8px; 
+        gap: 6px;
+      }
+      
+      .control-btn { 
+        min-width: 55px;
+        padding: 6px;
+      }
+      
+      .control-btn .icon {
+        font-size: 18px;
+      }
+      
+      .control-btn .label {
+        font-size: 9px;
+      }
+      
+      .legend-container {
+        bottom: 15px;
+        left: 15px;
+        max-width: 240px;
+        font-size: 12px;
+      }
+      
+      .status-container {
+        bottom: 15px;
+        right: 8px;
+      }
+      
+      .status-indicator {
+        font-size: 11px;
+        padding: 5px 10px;
+      }
+      
+      .ar-overlay {
+        font-size: 11px;
+        padding: 6px 10px;
+        min-width: 80px;
+      }
+      
+      .ar-info-panel {
+        font-size: 14px;
+        padding: 15px;
+      }
+    }
+  </style>
+  
+  <script>
+    // Service Worker Registration
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('service-worker.js')
+          .then(reg => console.log('✓ Service Worker registriert'))
+          .catch(err => console.error('✗ Service Worker Fehler:', err));
+      });
+    }
+  </script>
+</head>
+
+<body>
+  <!-- 2D MAP CONTAINER -->
+  <div id="map-container" class="mode-container active">
+    <div id="map"></div>
+  </div>
+  
+  <!-- AR CONTAINER -->
+  <div id="ar-container" class="mode-container">
+    <video id="ar-video" autoplay playsinline muted></video>
+    <div id="ar-overlays"></div>
+    <div class="ar-info-panel">
+      <div id="ar-hydrant-info">Richte die Kamera auf Hydranten...</div>
+    </div>
+  </div>
+  
+  <!-- HEADER MIT MODE SWITCHER -->
+  <div class="map-title">
+    <span>🚒 Hydrantenkarte Feuerwehr Hamberg</span>
+    <div class="mode-switcher">
+      <button class="mode-btn active" onclick="switchTo2D()" id="mode-2d-btn">
+        🗺️ 2D
+      </button>
+      <button class="mode-btn" onclick="switchToAR()" id="mode-ar-btn">
+        📱 AR
+      </button>
+    </div>
+  </div>
+  
+  <!-- OFFLINE INDICATOR -->
+  <div class="offline-indicator" id="offline-indicator">
+    📡 Offline-Modus
+  </div>
+
+  <!-- CONTROLS SIDEBAR -->
+  <div class="controls-sidebar">
+    <button class="control-btn" onclick="toggleFlashlight()" id="flashlight-toggle" title="Taschenlampe">
+      <span class="icon">🔦</span>
+      <span class="label" id="flashlight-label">Aus</span>
+    </button>
+    <button class="control-btn" onclick="findNearestHydrant()" title="Nächster Hydrant">
+      <span class="icon">🔍</span>
+      <span class="label">Nächster</span>
+    </button>
+    <button class="control-btn" onclick="gotoUserLocation()" title="Meine Position">
+      <span class="icon">📍</span>
+      <span class="label">Position</span>
+    </button>
+    <button class="control-btn map-only" onclick="toggleTheme()" title="Karte wechseln">
+      <span class="icon">🗺️</span>
+      <span class="label">Karte</span>
+    </button>
+    <button class="control-btn" onclick="toggleCompass()" id="compass-toggle" title="Kompass">
+      <span class="icon">🧭</span>
+      <span class="label">Kompass</span>
+    </button>
+    <button class="control-btn" onclick="toggleWindArrow()" id="wind-toggle" title="Wind">
+      <span class="icon">💨</span>
+      <span class="label">Wind</span>
+    </button>
+    <button class="control-btn ar-only" onclick="toggleAROverlays()" id="overlays-btn" title="AR Overlays" style="display: none;">
+      <span class="icon">👁️</span>
+      <span class="label">Overlays</span>
+    </button>
+    <button class="control-btn" onclick="shareLocation()" title="Standort teilen">
+      <span class="icon">📤</span>
+      <span class="label">Teilen</span>
+    </button>
+  </div>
+
+  <!-- LEGEND -->
+  <div class="legend-container" id="legend-container">
+    <div class="legend-header" onclick="toggleLegend()">
+      <span>📋 Legende</span>
+      <span class="toggle-icon" id="legend-toggle-icon">▼</span>
+    </div>
+    <div class="legend-content" id="legend-content">
+      <div class="legend-filters">
+        <label class="filter-checkbox">
+          <input type="checkbox" id="filter-all" checked onchange="toggleAllFilters(this)">
+          <span>Alle anzeigen</span>
+        </label>
+      </div>
+      <div class="legend-items">
+        <div class="legend-item">
+          <div class="legend-color" style="background: #ff4444;"></div>
+          <label class="filter-checkbox">
+            <input type="checkbox" data-type="überflurhydrant" checked onchange="filterMarkers()">
+            <span>Überflurhydrant</span>
+          </label>
+        </div>
+        <div class="legend-item">
+          <div class="legend-color" style="background: #4444ff;"></div>
+          <label class="filter-checkbox">
+            <input type="checkbox" data-type="unterflurhydrant" checked onchange="filterMarkers()">
+            <span>Unterflurhydrant</span>
+          </label>
+        </div>
+        <div class="legend-item">
+          <div class="legend-color" style="background: #44ff44;"></div>
+          <label class="filter-checkbox">
+            <input type="checkbox" data-type="rettungspunkt" checked onchange="filterMarkers()">
+            <span>Rettungspunkt</span>
+          </label>
+        </div>
+        <div class="legend-item">
+          <div class="legend-color" style="background: #ffff44;"></div>
+          <label class="filter-checkbox">
+            <input type="checkbox" data-type="wasserbehälter" checked onchange="filterMarkers()">
+            <span>Wasserbehälter</span>
+          </label>
+        </div>
+        <div class="legend-item">
+          <div class="legend-color" style="background: #ff44ff;"></div>
+          <label class="filter-checkbox">
+            <input type="checkbox" data-type="sperrpunkt" checked onchange="filterMarkers()">
+            <span>Sperrpunkt</span>
+          </label>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- STATUS INDICATORS -->
+  <div class="status-container">
+    <div class="status-indicator" id="gps-indicator">
+      <span id="gps-icon">🟡</span>
+      <span id="gps-accuracy">GPS: --</span>
+    </div>
+    <div class="status-indicator" id="altitude-indicator">
+      <span>📏</span>
+      <span id="altitude-value">-- m</span>
+    </div>
+    <div class="status-indicator" id="degree-indicator">
+      <span>🧭</span>
+      <span id="degree-value">0°</span>
+    </div>
+    <div class="status-indicator" id="wind-indicator">
+      <span>💨</span>
+      <span id="wind-value">-- km/h</span>
+    </div>
+    <div class="status-indicator" id="mode-indicator">
+      <span>📱</span>
+      <span id="mode-value">2D-Modus</span>
+    </div>
+  </div>
+
+  <!-- AR LOADING SCREEN -->
+  <div class="ar-loading" id="ar-loading" style="display: none;">
+    <div class="loading-spinner"></div>
+    <div class="loading-text">📱 Starte Kamera-AR...</div>
+    <div class="loading-steps">
+      <div id="ar-loading-step">Aktiviere Kamera...</div>
+    </div>
+  </div>
+
+  <!-- CAMERA PERMISSION SCREEN -->
+  <div class="camera-permission" id="camera-permission" style="display: none;">
+    <div class="permission-icon">📹</div>
+    <h2>Kamera-Zugriff erforderlich</h2>
+    <p>Für AR benötigt die App Zugriff auf deine Kamera.<br>
+    Dadurch können Hydranten-Informationen über dem Kamerabild angezeigt werden.</p>
+    <button class="permission-btn" onclick="requestCameraPermission()">
+      📸 Kamera aktivieren
+    </button>
+  </div>
+
+  <!-- Load Leaflet -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" 
+          integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" 
+          crossorigin="anonymous"></script>
+  
+  <!-- App JavaScript -->
+  <script>
+// ============================================================================
+// GLOBAL VARIABLES
+// ============================================================================
+let currentMode = '2d';
+let userPosition = { lat: 49.10951, lng: 11.68453 };
+let currentHeading = 0;
+let windData = { speed: null, direction: null, degrees: null, gusts: null };
+let hydrantsData = [
+  {
+    "lat": 49.10951,
+    "lng": 11.68453,
+    "type": "überflurhydrant",
+    "description": "Überflurhydrant Feuerwehrhaus",
+    "size": "80.0",
+    "department": "FF Hamberg"
+  },
+  {
+    "lat": 49.10895,
+    "lng": 11.68544,
+    "type": "unterflurhydrant",
+    "description": "Unterflurhydrant Schöndorfer Str. 5",
+    "size": "80.0",
+    "department": "FF Hamberg"
+  },
+  {
+    "lat": 49.10803,
+    "lng": 11.68614,
+    "type": "unterflurhydrant",
+    "description": "Unterflurhydrant Zum Spitzberg 3",
+    "size": "80.0",
+    "department": "FF Hamberg"
+  },
+  {
+    "lat": 49.10752,
+    "lng": 11.68542,
+    "type": "unterflurhydrant",
+    "description": "Unterflurhydrant Kreuzung Zum Spitzberg / Röthenweg",
+    "size": "125.0",
+    "department": "FF Hamberg"
+  },
+  {
+    "lat": 49.10815,
+    "lng": 11.68443,
+    "type": "unterflurhydrant",
+    "description": "Unterflurhydrant Röthenweg 13",
+    "size": "80.0",
+    "department": "FF Hamberg"
+  },
+  {
+    "lat": 49.10693,
+    "lng": 11.68444,
+    "type": "unterflurhydrant",
+    "description": "Unterflurhydrant Zum Spitzberg 10",
+    "size": "100.0",
+    "department": "FF Hamberg"
+  },
+  {
+    "lat": 49.10738,
+    "lng": 11.68313,
+    "type": "unterflurhydrant",
+    "description": "Unterflurhydrant Sonnenring 14",
+    "size": "100.0",
+    "department": "FF Hamberg"
+  },
+  {
+    "lat": 49.10664,
+    "lng": 11.68528,
+    "type": "unterflurhydrant",
+    "description": "Unterflurhydrant Kiefergasse 5",
+    "size": "80.0",
+    "department": "FF Hamberg"
+  },
+  {
+    "lat": 49.10597,
+    "lng": 11.68546,
+    "type": "unterflurhydrant",
+    "description": "Unterflurhydrant Rascher Str. 13",
+    "size": "80.0",
+    "department": "FF Hamberg"
+  },
+  {
+    "lat": 49.1055,
+    "lng": 11.68611,
+    "type": "unterflurhydrant",
+    "description": "Unterflurhydrant Rascher Str. 9",
+    "size": "80.0",
+    "department": "FF Hamberg"
+  },
+  {
+    "lat": 49.10605,
+    "lng": 11.6862,
+    "type": "unterflurhydrant",
+    "description": "Unterflurhydrant Röthenweg 6",
+    "size": "100.0",
+    "department": "FF Hamberg"
+  },
+  {
+    "lat": 49.10668,
+    "lng": 11.68604,
+    "type": "unterflurhydrant",
+    "description": "Unterflurhydrant Röthenweg",
+    "size": "80.0",
+    "department": "FF Hamberg"
+  },
+  {
+    "lat": 49.10786,
+    "lng": 11.68775,
+    "type": "unterflurhydrant",
+    "description": "Unterflurhydrant Hauptstraße 17",
+    "size": "125.0",
+    "department": "FF Hamberg"
+  },
+  {
+    "lat": 49.1068,
+    "lng": 11.68672,
+    "type": "überflurhydrant",
+    "description": "Überflurhydrant Hauptstraße 28",
+    "size": "80.0",
+    "department": "FF Hamberg"
+  },
+  {
+    "lat": 49.1063,
+    "lng": 11.68724,
+    "type": "unterflurhydrant",
+    "description": "Unterflurhydrant Hauptstraße 21b",
+    "size": "125.0",
+    "department": "FF Hamberg"
+  },
+  {
+    "lat": 49.10557,
+    "lng": 11.68756,
+    "type": "unterflurhydrant",
+    "description": "Unterflurhydrant Hauptstraße 25",
+    "size": "125.0",
+    "department": "FF Hamberg"
+  },
+  {
+    "lat": 49.10483,
+    "lng": 11.68749,
+    "type": "überflurhydrant",
+    "description": "Überflurhydrant Hauptstraße 29",
+    "size": "80.0",
+    "department": "FF Hamberg"
+  },
+  {
+    "lat": 49.10502,
+    "lng": 11.68894,
+    "type": "unterflurhydrant",
+    "description": "Unterflurhydrant Herrnrieder Str. 2",
+    "size": "100.0",
+    "department": "FF Hamberg"
+  },
+  {
+    "lat": 49.10279,
+    "lng": 11.68877,
+    "type": "überflurhydrant",
+    "description": "Überflurhydrant Eichlberger Str. 12",
+    "size": "80.0",
+    "department": "FF Hamberg"
+  },
+  {
+    "lat": 49.10373,
+    "lng": 11.6877,
+    "type": "überflurhydrant",
+    "description": "Überflurhydrant Eichlberger Str. 3",
+    "size": "80.0",
+    "department": "FF Hamberg"
+  },
+  {
+    "lat": 49.1043,
+    "lng": 11.68642,
+    "type": "unterflurhydrant",
+    "description": "Unterflurhydrant Hauptstraße 35",
+    "size": "100.0",
+    "department": "FF Hamberg"
+  },
+  {
+    "lat": 49.10412,
+    "lng": 11.68603,
+    "type": "unterflurhydrant",
+    "description": "Unterflurhydrant Hauptstraße 37",
+    "size": "80.0",
+    "department": "FF Hamberg"
+  },
+  {
+    "lat": 49.10355,
+    "lng": 11.68542,
+    "type": "unterflurhydrant",
+    "description": "Unterflurhydrant Hauptstraße 41",
+    "size": "80.0",
+    "department": "FF Hamberg"
+  },
+  {
+    "lat": 49.10372,
+    "lng": 11.68505,
+    "type": "unterflurhydrant",
+    "description": "Unterflurhydrant Hauptstraße 46",
+    "size": "80.0",
+    "department": "FF Hamberg"
+  },
+  {
+    "lat": 49.10288,
+    "lng": 11.68749,
+    "type": "unterflurhydrant",
+    "description": "Unterflurhydrant Eichlberger Str. 12",
+    "size": "125.0",
+    "department": "FF Hamberg"
+  },
+  {
+    "lat": 49.10367,
+    "lng": 11.68839,
+    "type": "unterflurhydrant",
+    "description": "Unterflurhydrant Eichlberger Str. 4",
+    "size": "100.0",
+    "department": "FF Hamberg"
+  },
+  {
+    "lat": 49.11046,
+    "lng": 11.67008,
+    "type": "überflurhydrant",
+    "description": "Überflurhydrant Ödberg 1",
+    "size": "80.0",
+    "department": "FF Hamberg"
+  },
+  {
+    "lat": 49.11063,
+    "lng": 11.67348,
+    "type": "unterflurhydrant",
+    "description": "Unterflurhydrant Ödberg 3",
+    "size": "80.0",
+    "department": "FF Hamberg"
+  },
+  {
+    "lat": 49.1111,
+    "lng": 11.67341,
+    "type": "überflurhydrant",
+    "description": "Überflurhydrant Ödberg 4",
+    "size": "80.0",
+    "department": "FF Hamberg"
+  },
+  {
+    "lat": 49.11035,
+    "lng": 11.6837,
+    "type": "unterflurhydrant",
+    "description": "Unterflurhydrant Sportplatz",
+    "size": "80.0",
+    "department": "FF Hamberg"
+  },
+  {
+    "lat": 49.11208,
+    "lng": 11.68469,
+    "type": "unterflurhydrant",
+    "description": "Unterflurhydrant Kreuzung Reitstraße/Spanbergweg",
+    "size": "80.0",
+    "department": "FF Hamberg"
+  },
+  {
+    "lat": 49.11304,
+    "lng": 11.68592,
+    "type": "überflurhydrant",
+    "description": "Überflurhydrant Gabelung Reitstraße/Winner Str.",
+    "size": "80.0",
+    "department": "FF Hamberg"
+  },
+  {
+    "lat": 49.11292,
+    "lng": 11.68668,
+    "type": "überflurhydrant",
+    "description": "Überflurhydrant Bushäuschen Schnödorf",
+    "size": "80.0",
+    "department": "FF Hamberg"
+  },
+  {
+    "lat": 49.11328,
+    "lng": 11.68606,
+    "type": "unterflurhydrant",
+    "description": "Unterflurhydrant Winner Str. 1",
+    "size": "80.0",
+    "department": "FF Hamberg"
+  },
+  {
+    "lat": 49.11447,
+    "lng": 11.6874,
+    "type": "unterflurhydrant",
+    "description": "Unterflurhydrant Winner Str. 6",
+    "size": "80.0",
+    "department": "FF Hamberg"
+  },
+  {
+    "lat": 49.11339,
+    "lng": 11.68766,
+    "type": "überflurhydrant",
+    "description": "Überflurhydrant Reitstraße 20",
+    "size": "80.0",
+    "department": "FF Hamberg"
+  },
+  {
+    "lat": 49.11098,
+    "lng": 11.68577,
+    "type": "unterflurhydrant",
+    "description": "Unterflurhydrant Hohe Trift 5",
+    "size": "80.0",
+    "department": "FF Hamberg"
+  },
+  {
+    "lat": 49.11124,
+    "lng": 11.68644,
+    "type": "unterflurhydrant",
+    "description": "Unterflurhydrant Hohe Trift 2, Einmündung Spanbergweg",
+    "size": "150.0",
+    "department": "FF Hamberg"
+  },
+  {
+    "lat": 49.11065,
+    "lng": 11.68653,
+    "type": "unterflurhydrant",
+    "description": "Unterflurhydrant Hauptstraße 1",
+    "size": "150.0",
+    "department": "FF Hamberg"
+  },
+  {
+    "lat": 49.11,
+    "lng": 11.68699,
+    "type": "unterflurhydrant",
+    "description": "Unterflurhydrant Hauptstraße 3",
+    "size": "100.0",
+    "department": "FF Hamberg"
+  },
+  {
+    "lat": 49.1091,
+    "lng": 11.68704,
+    "type": "überflurhydrant",
+    "description": "Überflurhydrant Hauptstraße 10",
+    "size": "80.0",
+    "department": "FF Hamberg"
+  },
+  {
+    "lat": 49.10941,
+    "lng": 11.68767,
+    "type": "wasserbehälter",
+    "description": "Löschwasserbehälter Talweg, Einmündung Pfarrgasse",
+    "size": "nan",
+    "department": "FF Hamberg"
+  },
+  {
+    "lat": 49.10881,
+    "lng": 11.68816,
+    "type": "unterflurhydrant",
+    "description": "Unterflurhydrant Pfarrgasse 4",
+    "size": "100.0",
+    "department": "FF Hamberg"
+  },
+  {
+    "lat": 49.11375,
+    "lng": 11.69697,
+    "type": "überflurhydrant",
+    "description": "Überflurhydrant Rofen",
+    "size": "80.0",
+    "department": "FF Hamberg"
+  },
+  {
+    "lat": 49.11399,
+    "lng": 11.69562,
+    "type": "unterflurhydrant",
+    "description": "Unterflurhydrant Rofen",
+    "size": "80.0",
+    "department": "FF Hamberg"
+  },
+  {
+    "lat": 49.10078,
+    "lng": 11.68323,
+    "type": "überflurhydrant",
+    "description": "Überflurhydrant Ziegelhütte 1",
+    "size": "80.0",
+    "department": "FF Hamberg"
+  },
+  {
+    "lat": 49.10849,
+    "lng": 11.68725,
+    "type": "unterflurhydrant",
+    "description": "Unterflurhydrant Kirche",
+    "size": "80.0",
+    "department": "FF Hamberg"
+  },
+  {
+    "lat": 49.092199,
+    "lng": 11.70373,
+    "type": "rettungspunkt",
+    "description": "Rettungspunkt Schafsee Hamberg/Eichlberg",
+    "size": "nan",
+    "department": "FF Hamberg"
+  },
+  {
+    "lat": 49.086695,
+    "lng": 11.66433953,
+    "type": "rettungspunkt",
+    "description": "Rettungspunkt NM-2131 Langenthonhausen",
+    "size": "nan",
+    "department": "FF Hamberg"
+  },
+  {
+    "lat": 49.10529568,
+    "lng": 11.716126,
+    "type": "rettungspunkt",
+    "description": "Rettungspunkt Feuerwehrhaus Herrnried",
+    "size": "nan",
+    "department": "FF Hamberg"
+  },
+  {
+    "lat": 49.11173709,
+    "lng": 11.66721575,
+    "type": "rettungspunkt",
+    "description": "Rettungspunkt NM-2171 Ödberg",
+    "size": "nan",
+    "department": "FF Hamberg"
+  },
+  {
+    "lat": 49.12040024,
+    "lng": 11.71188973,
+    "type": "rettungspunkt",
+    "description": "Rettungspunkt NM-2189 B8 Parkplatz",
+    "size": "nan",
+    "department": "FF Hamberg"
+  }
+];
+
+let map, userMarker, cone, accuracyCircle, nearestHydrantLine;
+let hydrantMarkers = [];
+let windArrowLine = null;
+let windArrowHead = null;
+let currentThemeIndex = 0;
+
+// AR Variables
+let arVideo = null;
+let arStream = null;
+let arOverlaysVisible = true;
+
+// Device Sensors
+let compassActive = false;
+let flashlightMode = 0; // 0=aus, 1=an, 2=blinken
+let flashlightInterval = null;
+
+// Map Themes
+const themes = [
+  {
+    name: 'OpenStreetMap',
+    url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+    attribution: '© OpenStreetMap contributors'
+  },
+  {
+    name: 'Satellite',
+    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+    attribution: '© Esri'
+  }
+];
+
+// ============================================================================
+// INITIALIZATION
+// ============================================================================
+document.addEventListener('DOMContentLoaded', () => {
+  initMap();
+  initGeolocation();
+  initOnlineStatus();
+  initDeviceOrientation();
+});
+
+// ============================================================================
+// MAP INITIALIZATION
+// ============================================================================
+function initMap() {
+  map = L.map('map', {
+    center: [49.10951, 11.68453],
+    zoom: 15,
+    zoomControl: true
+  });
+  
+  L.tileLayer(themes[0].url, {
+    attribution: themes[0].attribution,
+    maxZoom: 19
+  }).addTo(map);
+  
+  loadHydrants();
+}
+
+function loadHydrants() {
+  hydrantsData.forEach(hydrant => {
+    const icon = getIconForType(hydrant.type);
+    const marker = L.marker([hydrant.lat, hydrant.lng], { icon })
+      .addTo(map)
+      .bindPopup(createPopupContent(hydrant));
+    
+    marker.hydrantType = hydrant.type;
+    hydrantMarkers.push(marker);
+  });
+  
+  console.log(`✓ ${hydrantMarkers.length} Hydranten geladen`);
+}
+
+function getIconForType(type) {
+  const iconMap = {
+    'überflurhydrant': 'icons/red-dot.png',
+    'unterflurhydrant': 'icons/blue-dot.png',
+    'rettungspunkt': 'icons/green-dot.png',
+    'wasserbehälter': 'icons/yellow-dot.png',
+    'sperrpunkt': 'icons/purple-dot.png'
+  };
+  
+  return L.icon({
+    iconUrl: iconMap[type] || 'icons/blue-dot.png',
+    iconSize: [32, 32],
+    iconAnchor: [16, 32]
+  });
+}
+
+function createPopupContent(hydrant) {
+  const typeName = hydrant.type.charAt(0).toUpperCase() + hydrant.type.slice(1);
+  return `
+    <b>${typeName}</b><br>
+    ${hydrant.description}<br>
+    Nenndurchmesser DN: ${hydrant.size} mm<br>
+    ${hydrant.department}<br>
+    <a href='https://maps.apple.com/?daddr=${hydrant.lat},${hydrant.lng}' target='_blank'>Apple Karten</a><br>
+    <a href='https://maps.google.com/?daddr=${hydrant.lat},${hydrant.lng}' target='_blank'>Google Maps</a>
+  `;
+}
+
+// ============================================================================
+// GEOLOCATION
+// ============================================================================
+function initGeolocation() {
+  if ('geolocation' in navigator) {
+    navigator.geolocation.watchPosition(
+      (position) => {
+        userPosition = {
+          lat: position.coords.latitude,
+          lng: position.coords.longitude
+        };
+        updateUserMarker(position);
+        updateGPSIndicator(position.coords.accuracy);
+        updateAltitude(position.coords.altitude);
+        updateAROverlays();
+      },
+      (error) => {
+        console.error('Geolocation error:', error);
+      },
+      {
+        enableHighAccuracy: true,
+        maximumAge: 1000,
+        timeout: 5000
+      }
+    );
+  }
+}
+
+function updateUserMarker(position) {
+  const latlng = [position.coords.latitude, position.coords.longitude];
+  
+  if (userMarker) {
+    userMarker.setLatLng(latlng);
+  } else {
+    userMarker = L.marker(latlng, {
+      icon: L.icon({
+        iconUrl: 'icons/blue-dot.png',
+        iconSize: [20, 20],
+        iconAnchor: [10, 10]
+      })
+    }).addTo(map);
+  }
+  
+  if (accuracyCircle) {
+    accuracyCircle.setLatLng(latlng);
+    accuracyCircle.setRadius(position.coords.accuracy);
+  } else {
+    accuracyCircle = L.circle(latlng, {
+      radius: position.coords.accuracy,
+      color: '#4285F4',
+      fillColor: '#4285F4',
+      fillOpacity: 0.1,
+      weight: 1
+    }).addTo(map);
+  }
+}
+
+function updateGPSIndicator(accuracy) {
+  const indicator = document.getElementById('gps-accuracy');
+  const icon = document.getElementById('gps-icon');
+  
+  if (accuracy < 20) {
+    icon.textContent = '🟢';
+    indicator.textContent = `GPS: ${Math.round(accuracy)}m`;
+  } else if (accuracy < 50) {
+    icon.textContent = '🟡';
+    indicator.textContent = `GPS: ${Math.round(accuracy)}m`;
+  } else {
+    icon.textContent = '🔴';
+    indicator.textContent = `GPS: ${Math.round(accuracy)}m`;
+  }
+}
+
+function updateAltitude(altitude) {
+  const altitudeValue = document.getElementById('altitude-value');
+  if (altitude) {
+    altitudeValue.textContent = `${Math.round(altitude)} m`;
+  }
+}
+
+// ============================================================================
+// MODE SWITCHING
+// ============================================================================
+function switchTo2D() {
+  document.getElementById('ar-container').classList.remove('active');
+  document.getElementById('map-container').classList.add('active');
+  document.getElementById('mode-ar-btn').classList.remove('active');
+  document.getElementById('mode-2d-btn').classList.add('active');
+  document.getElementById('mode-value').textContent = '2D-Modus';
+  
+  currentMode = '2d';
+  stopAR();
+}
+
+async function switchToAR() {
+  document.getElementById('map-container').classList.remove('active');
+  document.getElementById('ar-container').classList.add('active');
+  document.getElementById('mode-2d-btn').classList.remove('active');
+  document.getElementById('mode-ar-btn').classList.add('active');
+  document.getElementById('mode-value').textContent = 'AR-Modus';
+  
+  currentMode = 'ar';
+  await initAR();
+}
+
+// ============================================================================
+// AR FUNCTIONALITY
+// ============================================================================
+async function initAR() {
+  arVideo = document.getElementById('ar-video');
+  
+  try {
+    document.getElementById('ar-loading').style.display = 'flex';
+    
+    arStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'environment', width: 1920, height: 1080 }
+    });
+    
+    arVideo.srcObject = arStream;
+    await arVideo.play();
+    
+    document.getElementById('ar-loading').style.display = 'none';
+    
+    updateAROverlays();
+    
+  } catch (error) {
+    console.error('Kamera-Fehler:', error);
+    document.getElementById('ar-loading').style.display = 'none';
+    document.getElementById('camera-permission').style.display = 'flex';
+  }
+}
+
+function stopAR() {
+  if (arStream) {
+    arStream.getTracks().forEach(track => track.stop());
+    arStream = null;
+  }
+  if (arVideo) {
+    arVideo.srcObject = null;
+  }
+}
+
+function updateAROverlays() {
+  if (currentMode !== 'ar' || !arOverlaysVisible) return;
+  
+  const overlaysContainer = document.getElementById('ar-overlays');
+  overlaysContainer.innerHTML = '';
+  
+  // Berechne sichtbare Hydranten basierend auf Entfernung und Richtung
+  const nearbyHydrants = hydrantsData
+    .map(h => ({
+      ...h,
+      distance: calculateDistance(userPosition.lat, userPosition.lng, h.lat, h.lng),
+      bearing: calculateBearing(userPosition.lat, userPosition.lng, h.lat, h.lng)
+    }))
+    .filter(h => h.distance < 500) // Nur Hydranten im 500m Radius
+    .sort((a, b) => a.distance - b.distance)
+    .slice(0, 10); // Maximal 10 Overlays
+  
+  nearbyHydrants.forEach(hydrant => {
+    const overlay = document.createElement('div');
+    overlay.className = `ar-overlay ${hydrant.type}`;
+    overlay.textContent = `${Math.round(hydrant.distance)}m`;
+    
+    // Position basierend auf Bearing
+    const relativeBearing = (hydrant.bearing - currentHeading + 360) % 360;
+    const screenX = 50 + (relativeBearing - 180) / 180 * 40; // -40% bis +40%
+    const screenY = 50 - (500 - hydrant.distance) / 500 * 20; // Näher = weiter oben
+    
+    overlay.style.left = `${screenX}%`;
+    overlay.style.top = `${screenY}%`;
+    
+    overlay.onclick = () => {
+      alert(`${hydrant.description}\n${Math.round(hydrant.distance)}m entfernt`);
+    };
+    
+    overlaysContainer.appendChild(overlay);
+  });
+}
+
+function toggleAROverlays() {
+  arOverlaysVisible = !arOverlaysVisible;
+  const overlaysContainer = document.getElementById('ar-overlays');
+  overlaysContainer.style.display = arOverlaysVisible ? 'block' : 'none';
+  
+  const btn = document.getElementById('overlays-btn');
+  btn.classList.toggle('active', arOverlaysVisible);
+}
+
+async function requestCameraPermission() {
+  document.getElementById('camera-permission').style.display = 'none';
+  await initAR();
+}
+
+// ============================================================================
+// CONTROLS
+// ============================================================================
+function gotoUserLocation() {
+  if (userPosition) {
+    map.setView([userPosition.lat, userPosition.lng], 17);
+  }
+}
+
+function toggleTheme() {
+  currentThemeIndex = (currentThemeIndex + 1) % themes.length;
+  const theme = themes[currentThemeIndex];
+  
+  map.eachLayer((layer) => {
+    if (layer instanceof L.TileLayer) {
+      map.removeLayer(layer);
+    }
+  });
+  
+  L.tileLayer(theme.url, {
+    attribution: theme.attribution,
+    maxZoom: 19
+  }).addTo(map);
+}
+
+function findNearestHydrant() {
+  if (!userPosition || hydrantMarkers.length === 0) return;
+  
+  let nearest = null;
+  let minDistance = Infinity;
+  
+  hydrantMarkers.forEach(marker => {
+    const markerPos = marker.getLatLng();
+    const distance = map.distance(
+      [userPosition.lat, userPosition.lng],
+      [markerPos.lat, markerPos.lng]
+    );
+    
+    if (distance < minDistance) {
+      minDistance = distance;
+      nearest = marker;
+    }
+  });
+  
+  if (nearest) {
+    map.setView(nearest.getLatLng(), 18);
+    nearest.openPopup();
+  }
+}
+
+function filterMarkers() {
+  const checkboxes = document.querySelectorAll('[data-type]');
+  const activeTypes = Array.from(checkboxes)
+    .filter(cb => cb.checked)
+    .map(cb => cb.dataset.type);
+  
+  hydrantMarkers.forEach(marker => {
+    if (activeTypes.includes(marker.hydrantType)) {
+      marker.addTo(map);
+    } else {
+      map.removeLayer(marker);
+    }
+  });
+}
+
+function toggleAllFilters(checkbox) {
+  const checkboxes = document.querySelectorAll('[data-type]');
+  checkboxes.forEach(cb => {
+    cb.checked = checkbox.checked;
+  });
+  filterMarkers();
+}
+
+function toggleLegend() {
+  const content = document.getElementById('legend-content');
+  const icon = document.getElementById('legend-toggle-icon');
+  
+  content.classList.toggle('collapsed');
+  icon.textContent = content.classList.contains('collapsed') ? '▶' : '▼';
+}
+
+// ============================================================================
+// DEVICE FEATURES
+// ============================================================================
+async function toggleFlashlight() {
+  if (!arStream) {
+    alert('Kamera muss für Taschenlampe aktiv sein');
+    return;
+  }
+  
+  const track = arStream.getVideoTracks()[0];
+  const capabilities = track.getCapabilities();
+  
+  if (!capabilities.torch) {
+    alert('Taschenlampe nicht verfügbar');
+    return;
+  }
+  
+  flashlightMode = (flashlightMode + 1) % 3;
+  const btn = document.getElementById('flashlight-toggle');
+  const label = document.getElementById('flashlight-label');
+  
+  if (flashlightInterval) {
+    clearInterval(flashlightInterval);
+    flashlightInterval = null;
+  }
+  
+  try {
+    switch(flashlightMode) {
+      case 0:
+        await track.applyConstraints({ advanced: [{ torch: false }] });
+        btn.classList.remove('active', 'blinking');
+        label.textContent = 'Aus';
+        break;
+      case 1:
+        await track.applyConstraints({ advanced: [{ torch: true }] });
+        btn.classList.add('active');
+        btn.classList.remove('blinking');
+        label.textContent = 'Ein';
+        break;
+      case 2:
+        btn.classList.add('blinking');
+        btn.classList.remove('active');
+        label.textContent = 'Blink';
+        let isOn = false;
+        flashlightInterval = setInterval(async () => {
+          isOn = !isOn;
+          await track.applyConstraints({ advanced: [{ torch: isOn }] });
+        }, 500);
+        break;
+    }
+  } catch (error) {
+    console.error('Taschenlampen-Fehler:', error);
+  }
+}
+
+function toggleCompass() {
+  compassActive = !compassActive;
+  const btn = document.getElementById('compass-toggle');
+  btn.classList.toggle('active', compassActive);
+}
+
+function toggleWindArrow() {
+  console.log('Wind-Pfeil umgeschaltet');
+}
+
+function shareLocation() {
+  if (navigator.share) {
+    navigator.share({
+      title: 'Hydrantenkarte Feuerwehr Hamberg',
+      text: `Meine Position: ${userPosition.lat.toFixed(5)}, ${userPosition.lng.toFixed(5)}`,
+      url: window.location.href
+    }).catch(console.error);
+  } else {
+    alert(`Position: ${userPosition.lat.toFixed(5)}, ${userPosition.lng.toFixed(5)}`);
+  }
+}
+
+// ============================================================================
+// DEVICE ORIENTATION
+// ============================================================================
+function initDeviceOrientation() {
+  if ('DeviceOrientationEvent' in window) {
+    window.addEventListener('deviceorientationabsolute', handleOrientation);
+    window.addEventListener('deviceorientation', handleOrientation);
+  }
+}
+
+function handleOrientation(event) {
+  const heading = event.alpha || event.webkitCompassHeading || 0;
+  currentHeading = heading;
+  
+  const degreeValue = document.getElementById('degree-value');
+  degreeValue.textContent = `${Math.round(heading)}°`;
+  
+  if (currentMode === 'ar') {
+    updateAROverlays();
+  }
+}
+
+// ============================================================================
+// ONLINE STATUS
+// ============================================================================
+function initOnlineStatus() {
+  const updateOnlineStatus = () => {
+    const indicator = document.getElementById('offline-indicator');
+    if (!navigator.onLine) {
+      indicator.classList.add('visible');
+    } else {
+      indicator.classList.remove('visible');
+    }
+  };
+  
+  window.addEventListener('online', updateOnlineStatus);
+  window.addEventListener('offline', updateOnlineStatus);
+  updateOnlineStatus();
+}
+
+// ============================================================================
+// UTILITY FUNCTIONS
+// ============================================================================
+function calculateDistance(lat1, lon1, lat2, lon2) {
+  const R = 6371e3; // Erdradius in Metern
+  const φ1 = lat1 * Math.PI / 180;
+  const φ2 = lat2 * Math.PI / 180;
+  const Δφ = (lat2 - lat1) * Math.PI / 180;
+  const Δλ = (lon2 - lon1) * Math.PI / 180;
+  
+  const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+            Math.cos(φ1) * Math.cos(φ2) *
+            Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  
+  return R * c;
+}
+
+function calculateBearing(lat1, lon1, lat2, lon2) {
+  const φ1 = lat1 * Math.PI / 180;
+  const φ2 = lat2 * Math.PI / 180;
+  const Δλ = (lon2 - lon1) * Math.PI / 180;
+  
+  const y = Math.sin(Δλ) * Math.cos(φ2);
+  const x = Math.cos(φ1) * Math.sin(φ2) -
+            Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
+  const θ = Math.atan2(y, x);
+  
+  return (θ * 180 / Math.PI + 360) % 360;
+}
+
+console.log('✅ Hydrantenkarte geladen - Build: 25.10.2025');
+</script>
+</body>
+</html>
